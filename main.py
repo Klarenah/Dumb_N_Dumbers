@@ -1,6 +1,5 @@
 import sys
 import os
-import platform
 import pygame
 
 from config import WIDTH, HEIGHT, TITLE, FPS, BACKGROUND_COLOR, MAX_STAGE
@@ -54,70 +53,28 @@ def initialize_sliders():
     return Slider(320, 240, 360, start=0.6), Slider(320, 340, 360, start=0.5)
 
 
-def load_font_file(font_path, size):
-    """
-    외부 폰트 파일(.ttf) 로드
-    크로스 플랫폼 지원
-    """
-    try:
-        if os.path.exists(font_path):
-            return pygame.font.Font(font_path, size)
-    except Exception as e:
-        print(f"Warning: 폰트 파일 로드 실패 ({font_path}): {e}")
-    return None
-
-
-def get_korean_font(size, bold=False):
-    """
-    한글 폰트 가져오기 (DungGeunMo.ttf만 사용)
-    
-    Args:
-        size: 폰트 크기
-        bold: 굵은 폰트 사용 여부 (기본: False, DungGeunMo는 bold 파라미터 무시)
-    """
-    # 외부 폰트 파일 시도 (프로젝트/fonts 폴더)
+def get_korean_font(size):
+    """한글 폰트 로드 (DungGeunMo.ttf)"""
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    fonts_dir_local = os.path.join(script_dir, "fonts")  # Dumb_N_Dumbers/fonts/
-    fonts_dir_root = os.path.join(os.path.dirname(script_dir), "fonts")  # 프로젝트 루트/fonts/
+    fonts_dirs = [
+        os.path.join(script_dir, "fonts"),
+        os.path.join(os.path.dirname(script_dir), "fonts")
+    ]
     
-    # 두 위치 모두 확인
-    fonts_dirs = [fonts_dir_local, fonts_dir_root]
-    
-    # DungGeunMo.ttf만 사용
     for fonts_dir in fonts_dirs:
         font_path = os.path.join(fonts_dir, "DungGeunMo.ttf")
-        font = load_font_file(font_path, size)
-        if font:
-            return font
+        if os.path.exists(font_path):
+            try:
+                return pygame.font.Font(font_path, size)
+            except:
+                continue
     
-    # 폰트 파일을 찾을 수 없으면 기본 폰트 반환 (한글 깨짐 가능)
-    print(f"Warning: DungGeunMo.ttf를 찾을 수 없습니다. 기본 폰트를 사용합니다. (한글이 깨질 수 있습니다)")
     return pygame.font.Font(None, size)
 
 
 def get_english_font(size):
-    """
-    영어용 기본 폰트 (피코파크 스타일 유지)
-    """
+    """영어용 기본 폰트"""
     return pygame.font.Font(None, size)
-
-
-def has_korean(text):
-    """
-    텍스트에 한글이 포함되어 있는지 확인
-    """
-    return any('\uAC00' <= char <= '\uD7A3' for char in text)
-
-
-def get_font_for_text(text, size, korean_font, english_font):
-    """
-    텍스트 내용에 따라 적절한 폰트 반환
-    한글이 있으면 한글 폰트, 영어만 있으면 기본 폰트
-    """
-    if has_korean(text):
-        return korean_font
-    else:
-        return english_font
 
 
 def main():
@@ -126,14 +83,10 @@ def main():
     pygame.display.set_caption(TITLE)
 
     # 폰트 초기화
-    # 영어: 피코파크 스타일 기본 폰트 사용
-    # 한글: 굵은 한글 폰트 사용 (외부 폰트 파일 우선)
-    font = get_english_font(36)  # 영어 기본 폰트
-    korean_font = get_korean_font(36, bold=True)  # 한글 굵은 폰트
+    font = get_english_font(36)
+    korean_font = get_korean_font(36)
     big_font = get_english_font(64)
-    korean_big_font = get_korean_font(64, bold=True)
-    title_font = get_english_font(100)  # 메인 타이틀용 큰 폰트 (영어)
-    korean_title_font = get_korean_font(100, bold=True)  # 한글 타이틀용
+    title_font = get_english_font(100)
     clock = pygame.time.Clock()
 
     buttons = initialize_buttons()
