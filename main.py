@@ -94,13 +94,13 @@ def main():
     sound_slider, sfx_slider = initialize_sliders()
 
     state = STATE_MAIN
-    selected_player_count = 1
+    selected_player_count = 2  # 최소 2명
     current_stage = 1
     show_exit_confirm = False  # Exit 확인 팝업 표시 여부 (오버레이 방식)
     pause_quit_confirm = False  # Pause 창에서 Quit Game 확인 팝업
     # 슬라이더 원래 위치 저장 (Settings 창 복원용)
     slider_orig_positions = None
-    player, key_obj, door_obj, platforms = create_stage_objects(current_stage)
+    players, key_obj, door_obj, platforms = create_stage_objects(current_stage)
 
     running = True
     while running:
@@ -131,9 +131,7 @@ def main():
                         show_exit_confirm = False  # Exit 확인 팝업에서 ESC로 취소
                     else:
                         state = STATE_MAIN
-                elif event.key == pygame.K_DOWN and state == STATE_GAME:
-                    if door_obj.player_can_enter(player):
-                        state = STATE_CLEAR
+                # 상호작용 키는 KEYDOWN 이벤트에서 처리하지 않고, 게임 루프에서 지속적으로 체크
 
             # Settings와 Pause 창 모두에서 슬라이더 처리
             if state == STATE_SETTINGS or state == STATE_PAUSE:
@@ -168,9 +166,9 @@ def main():
 
             elif state == STATE_SELECT_PLAYER:
                 if buttons["left"].handle_event(event):
-                    selected_player_count = max(1, selected_player_count - 1)
+                    selected_player_count = max(2, selected_player_count - 1)
                 if buttons["right"].handle_event(event):
-                    selected_player_count = min(4, selected_player_count + 1)
+                    selected_player_count = min(3, selected_player_count + 1)
                 if buttons["start"].handle_event(event):
                     state = STATE_STAGE_SELECT
 
@@ -178,7 +176,10 @@ def main():
                 for idx, button in enumerate(stage_buttons):
                     if button.handle_event(event):
                         current_stage = idx + 1
-                        player, key_obj, door_obj, platforms = create_stage_objects(current_stage)
+                        players, key_obj, door_obj, platforms = create_stage_objects(current_stage)
+                        # 상호작용 상태 초기화
+                        active_players = players[:selected_player_count]
+                        door_obj.reset_interactions(active_players)
                         state = STATE_GAME
                         break
 
@@ -279,21 +280,51 @@ def main():
             # 게임 로직 업데이트 (Pause일 때는 업데이트 안 함)
             if state == STATE_GAME:
                 keys = pygame.key.get_pressed()
-                player.update(keys, platforms)
-                key_obj.update(player)
-                door_obj.update(player)
+                # 선택한 플레이어 수만큼만 업데이트
+                active_players = players[:selected_player_count]
+                # 플레이어 간 충돌 처리를 위해 다른 플레이어 리스트 전달
+                for i, player in enumerate(active_players):
+                    other_players = [p for j, p in enumerate(active_players) if j != i]
+                    player.update(keys, platforms, other_players)
+                key_obj.update(active_players)
+                door_obj.update(active_players)
                 
-                if key_obj.collected and not player.has_key:
+                # 문과의 상호작용 체크 (지속적으로)
+                door_obj.check_interaction(active_players, keys)
+                
+                # 열쇠가 수집되었는지 확인
+                any_has_key = any(p.has_key for p in active_players)
+                if key_obj.collected and not any_has_key:
                     key_obj.attached_to_player = False
                 
-                if door_obj.player_can_enter(player):
-                    hint = font.render("Press(DOWN) key to enter", True, (0, 0, 0))
-                    screen.blit(hint, (door_obj.x - 60, door_obj.y - 40))
+                # 모든 플레이어가 문과 상호작용했는지 확인
+                if door_obj.all_players_interacted(active_players):
+                    state = STATE_CLEAR
+                    # 다음 스테이지 준비를 위해 상호작용 상태 초기화
+                    door_obj.reset_interactions(active_players)
+                elif door_obj.open:
+                    # 문이 열려있고 일부 플레이어만 상호작용한 경우 힌트 표시
+                    players_at_door = [p for p in active_players if door_obj.rect().colliderect(p.rect())]
+                    if players_at_door:
+                        interacted_count = sum(1 for p in active_players if p.interacted_with_door)
+                        total_count = len(active_players)
+                        hint_text = f"Press keys to enter ({interacted_count}/{total_count})"
+                        hint = font.render(hint_text, True, (0, 0, 0))
+                        screen.blit(hint, (door_obj.x - 80, door_obj.y - 40))
 
             # 게임 화면 그리기 (Pause일 때도 표시)
             for platform in platforms:
                 pygame.draw.rect(screen, (120, 120, 120), platform)
-            player.draw(screen)
+            # 선택한 플레이어 수만큼만 렌더링
+            active_players = players[:selected_player_count]
+            # 문 안으로 들어간 플레이어는 문 뒤에 그리기
+            for player in active_players:
+                if player.entered_door:
+                    player.draw(screen)
+            # 문 안으로 들어가지 않은 플레이어 그리기
+            for player in active_players:
+                if not player.entered_door:
+                    player.draw(screen)
             key_obj.draw(screen)
             door_obj.draw(screen, font)
 
