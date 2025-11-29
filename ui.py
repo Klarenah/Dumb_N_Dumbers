@@ -1,6 +1,11 @@
 import pygame
 
 
+def has_korean(text):
+    """텍스트에 한글이 포함되어 있는지 확인"""
+    return any('\uAC00' <= char <= '\uD7A3' for char in text)
+
+
 class Button:
     def __init__(self, x, y, w, h, text, color=(200, 200, 200), hover=(220, 220, 220)):
         self.rect = pygame.Rect(x, y, w, h)
@@ -8,25 +13,37 @@ class Button:
         self.color = color
         self.hover = hover
 
-    def draw(self, surface, font, korean_font=None):
+    def draw(self, surface, font, korean_font=None, shadow=False):
         """
         버튼 그리기
         Args:
             surface: 화면 surface
             font: 기본 폰트 (영어용)
             korean_font: 한글 폰트 (선택사항, None이면 자동 감지)
+            shadow: 그림자 효과 사용 여부 (기본값: True)
         """
         mx, my = pygame.mouse.get_pos()
         current_color = self.hover if self.rect.collidepoint(mx, my) else self.color
+        
+        # 그림자 효과 (입체감)
+        if shadow:
+            shadow_offset = 5
+            shadow_rect = pygame.Rect(
+                self.rect.x + shadow_offset,
+                self.rect.y + shadow_offset,
+                self.rect.w,
+                self.rect.h
+            )
+            # 반투명 검은색 그림자
+            shadow_surface = pygame.Surface((shadow_rect.w, shadow_rect.h), pygame.SRCALPHA)
+            pygame.draw.rect(shadow_surface, (0, 0, 0, 80), (0, 0, shadow_rect.w, shadow_rect.h))
+            surface.blit(shadow_surface, (shadow_rect.x, shadow_rect.y))
+        
         pygame.draw.rect(surface, current_color, self.rect)
         pygame.draw.rect(surface, (0, 0, 0), self.rect, 2)
         
         # 한글 폰트가 제공되고 텍스트에 한글이 있으면 한글 폰트 사용
-        if korean_font:
-            has_kr = any('\uAC00' <= char <= '\uD7A3' for char in self.text)
-            use_font = korean_font if has_kr else font
-        else:
-            use_font = font
+        use_font = korean_font if (korean_font and has_korean(self.text)) else font
             
         label = use_font.render(self.text, True, (0, 0, 0))
         surface.blit(
@@ -84,11 +101,7 @@ def draw_text_center(surface, text, font, color, x, y, korean_font=None):
         korean_font: 한글 폰트 (선택사항, None이면 자동 감지)
     """
     # 한글 폰트가 제공되고 텍스트에 한글이 있으면 한글 폰트 사용
-    if korean_font:
-        has_kr = any('\uAC00' <= char <= '\uD7A3' for char in text)
-        use_font = korean_font if has_kr else font
-    else:
-        use_font = font
+    use_font = korean_font if (korean_font and has_korean(text)) else font
         
     label = use_font.render(text, True, color)
     surface.blit(label, (x - label.get_width() // 2, y))
