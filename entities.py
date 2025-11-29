@@ -1,7 +1,7 @@
 
 import pygame
 
-from config import GRAVITY, WIDTH, HEIGHT
+from config import GRAVITY, WIDTH, HEIGHT, PICO_TEXT_COLOR
 
 
 class Player:
@@ -34,9 +34,16 @@ class Player:
             return
         
         move_dir = 0
-        if keys[self.key_left]:
+        try:
+            left_pressed = keys[self.key_left]
+            right_pressed = keys[self.key_right]
+        except (IndexError, TypeError):
+            left_pressed = False
+            right_pressed = False
+        
+        if left_pressed:
             move_dir -= 1
-        if keys[self.key_right]:
+        if right_pressed:
             move_dir += 1
         move_x = move_dir * self.speed
         self.x += move_x
@@ -62,9 +69,12 @@ class Player:
                     self.x = other.rect().right
                 player_rect = self.rect()
 
-        if keys[self.key_up] and self.on_ground:
-            self.vel_y = -13
-            self.on_ground = False
+        try:
+            if keys[self.key_up] and self.on_ground:
+                self.vel_y = -13
+                self.on_ground = False
+        except (IndexError, TypeError):
+            pass
 
         self.vel_y += GRAVITY
         move_y = self.vel_y
@@ -152,7 +162,7 @@ class Door:
     def draw(self, surface, font):
         color = (60, 200, 60) if self.open else (150, 90, 60)
         pygame.draw.rect(surface, color, (self.x, self.y, self.w, self.h))
-        label = font.render("Open" if self.open else "Door", True, (0, 0, 0))
+        label = font.render("Open" if self.open else "Door", True, PICO_TEXT_COLOR)
         surface.blit(label, (self.x - 5, self.y - 28))
 
     def update(self, players):
@@ -165,9 +175,16 @@ class Door:
 
     def check_interaction(self, players, keys):
         """플레이어들이 문과 상호작용했는지 확인하고 업데이트"""
+        if not self.open:
+            return
+        door_rect = self.rect()
         for player in players:
-            if self.rect().colliderect(player.rect()) and self.open:
-                if keys[player.key_interact] and not player.entered_door:
+            if door_rect.colliderect(player.rect()):
+                try:
+                    key_pressed = keys[player.key_interact] and not player.entered_door
+                except (IndexError, TypeError):
+                    key_pressed = False
+                if key_pressed:
                     player.interacted_with_door = True
                     player.entered_door = True
                     # 플레이어를 문의 중앙으로 이동
