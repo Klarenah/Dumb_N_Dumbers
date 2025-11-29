@@ -25,8 +25,21 @@ def get_platforms_for_stage(stage):
 
 def create_stage_objects(stage):
     platforms = get_platforms_for_stage(stage)
-    player = Player(100, 320)
+    # 플레이어 1: 방향키 (파란색), 상호작용: DOWN
+    player1 = Player(100, 320, color=(30, 120, 255), 
+                     key_left=pygame.K_LEFT, key_right=pygame.K_RIGHT, key_up=pygame.K_UP,
+                     key_interact=pygame.K_DOWN)
+    # 플레이어 2: WASD (빨간색), 상호작용: S
+    player2 = Player(150, 320, color=(255, 80, 80),
+                     key_left=pygame.K_a, key_right=pygame.K_d, key_up=pygame.K_w,
+                     key_interact=pygame.K_s)
+    # 플레이어 3: IJKL (초록색), 상호작용: K
+    player3 = Player(200, 320, color=(80, 255, 80),
+                     key_left=pygame.K_j, key_right=pygame.K_l, key_up=pygame.K_i,
+                     key_interact=pygame.K_k)
+    players = [player1, player2, player3]
     key_obj = KeyObj(520, 340)
     door_obj = Door(820, 240)
-    return player, key_obj, door_obj, platforms
+    return players, key_obj, door_obj, platforms
+
 
