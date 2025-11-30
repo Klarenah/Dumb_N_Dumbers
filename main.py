@@ -46,8 +46,9 @@ def initialize_buttons():
         "go_back": Button(360, 400, 240, 70, "GO BACK", color=(200, 200, 200), hover=(220, 220, 220)),
         # Pause 창 버튼들
         "resume": Button(360, 380, 240, 70, "RESUME", color=(180, 255, 180), hover=(200, 255, 200)),
-        "back_to_menu": Button(360, 470, 240, 70, "GO BACK TO MAIN MENU", color=(200, 220, 255), hover=(220, 240, 255)),
-        "quit_game": Button(360, 560, 240, 70, "QUIT GAME", color=(255, 200, 200), hover=(255, 220, 220)),
+        "reset_stage": Button(360, 470, 240, 70, "RESET STAGE", color=(255, 255, 180), hover=(255, 255, 200)),
+        "back_to_menu": Button(360, 560, 240, 70, "GO BACK TO MAIN MENU", color=(200, 220, 255), hover=(220, 240, 255)),
+        "quit_game": Button(360, 650, 240, 70, "QUIT GAME", color=(255, 200, 200), hover=(255, 220, 220)),
         "next": Button(360, 420, 220, 70, "NEXT", color=(200, 255, 200), hover=(180, 255, 180)),
     }
 
@@ -164,7 +165,27 @@ def main():
     ]
     
     # 게임 오브젝트 초기화 (player_colors 정의 후)
-    players, key_obj, door_obj, platforms = create_stage_objects(current_stage, player_colors)
+    stage_result = create_stage_objects(current_stage, player_colors)
+    if len(stage_result) == 7:
+        # 3스테이지: spike, floor_button 포함
+        players, key_obj, door_obj, platforms, moving_platforms, spike, floor_button = stage_result
+        bottom_spike = None
+    elif len(stage_result) == 6:
+        # 4스테이지: bottom_spike 포함
+        players, key_obj, door_obj, platforms, moving_platforms, bottom_spike = stage_result
+        spike = None
+        floor_button = None
+    elif len(stage_result) == 5:
+        players, key_obj, door_obj, platforms, moving_platforms = stage_result
+        spike = None
+        floor_button = None
+        bottom_spike = None
+    else:
+        players, key_obj, door_obj, platforms = stage_result
+        moving_platforms = []
+        spike = None
+        floor_button = None
+        bottom_spike = None
 
     running = True
     while running:
@@ -304,7 +325,25 @@ def main():
                     # 잠금 해제된 스테이지만 클릭 가능
                     if stage_num in unlocked_stages and button.handle_event(event):
                         current_stage = stage_num
-                        players, key_obj, door_obj, platforms = create_stage_objects(current_stage, player_colors)
+                        stage_result = create_stage_objects(current_stage, player_colors)
+                        if len(stage_result) == 7:
+                            players, key_obj, door_obj, platforms, moving_platforms, spike, floor_button = stage_result
+                            bottom_spike = None
+                        elif len(stage_result) == 6:
+                            players, key_obj, door_obj, platforms, moving_platforms, bottom_spike = stage_result
+                            spike = None
+                            floor_button = None
+                        elif len(stage_result) == 5:
+                            players, key_obj, door_obj, platforms, moving_platforms = stage_result
+                            spike = None
+                            floor_button = None
+                            bottom_spike = None
+                        else:
+                            players, key_obj, door_obj, platforms = stage_result
+                            moving_platforms = []
+                            spike = None
+                            floor_button = None
+                            bottom_spike = None
                         # 상호작용 상태 초기화
                         active_players = players[:selected_player_count]
                         door_obj.reset_interactions(active_players)
@@ -325,6 +364,34 @@ def main():
                 else:
                     # Pause 창 버튼 처리
                     if buttons["resume"].handle_event(event):
+                        slider_orig_positions = restore_slider_positions(
+                            sound_slider, sfx_slider, slider_orig_positions
+                        )
+                        state = STATE_GAME  # 게임 재개
+                    if buttons["reset_stage"].handle_event(event):
+                        # 스테이지 리셋: 현재 스테이지 재초기화
+                        stage_result = create_stage_objects(current_stage, player_colors)
+                        if len(stage_result) == 7:
+                            players, key_obj, door_obj, platforms, moving_platforms, spike, floor_button = stage_result
+                            bottom_spike = None
+                        elif len(stage_result) == 6:
+                            players, key_obj, door_obj, platforms, moving_platforms, bottom_spike = stage_result
+                            spike = None
+                            floor_button = None
+                        elif len(stage_result) == 5:
+                            players, key_obj, door_obj, platforms, moving_platforms = stage_result
+                            spike = None
+                            floor_button = None
+                            bottom_spike = None
+                        else:
+                            players, key_obj, door_obj, platforms = stage_result
+                            moving_platforms = []
+                            spike = None
+                            floor_button = None
+                            bottom_spike = None
+                        # 상호작용 상태 초기화
+                        active_players = players[:selected_player_count]
+                        door_obj.reset_interactions(active_players)
                         slider_orig_positions = restore_slider_positions(
                             sound_slider, sfx_slider, slider_orig_positions
                         )
@@ -536,12 +603,80 @@ def main():
             if state == STATE_GAME:
                 keys = pygame.key.get_pressed()
                 
-                # 플레이어 간 충돌 처리를 위해 다른 플레이어 리스트 전달
-                for i, player in enumerate(active_players):
-                    other_players = [p for j, p in enumerate(active_players) if j != i]
-                    player.update(keys, platforms, other_players)
+                # 4스테이지: 동기화된 플레이어 처리
+                if current_stage == 4 and len(active_players) > 0:
+                    from entities import SyncedPlayer
+                    if isinstance(active_players[0], SyncedPlayer):
+                        # 모든 플레이어의 키 입력을 수집
+                        all_players_keys = []
+                        for i in range(selected_player_count):
+                            player_keys = {}
+                            # 각 플레이어의 키 매핑
+                            if i == 0:  # 플레이어 1: 방향키
+                                player_keys = {pygame.K_LEFT: keys[pygame.K_LEFT], pygame.K_RIGHT: keys[pygame.K_RIGHT], 
+                                             pygame.K_UP: keys[pygame.K_UP], pygame.K_DOWN: keys[pygame.K_DOWN]}
+                            elif i == 1:  # 플레이어 2: WASD
+                                player_keys = {pygame.K_a: keys[pygame.K_a], pygame.K_d: keys[pygame.K_d], 
+                                             pygame.K_w: keys[pygame.K_w], pygame.K_s: keys[pygame.K_s]}
+                            elif i == 2:  # 플레이어 3: IJKL
+                                player_keys = {pygame.K_j: keys[pygame.K_j], pygame.K_l: keys[pygame.K_l], 
+                                             pygame.K_i: keys[pygame.K_i], pygame.K_k: keys[pygame.K_k]}
+                            all_players_keys.append(player_keys)
+                        
+                        # 움직이는 발판을 플랫폼으로 추가
+                        all_platforms = platforms + [p.rect() for p in moving_platforms]
+                        active_players[0].update(keys, platforms, all_platforms, all_players_keys)
+                        
+                        # 움직이는 발판 업데이트
+                        for platform in moving_platforms:
+                            platform.update()
+                else:
+                    # 일반 플레이어 처리
+                    all_platforms = platforms.copy()
+                    
+                    # 움직이는 발판도 플랫폼으로 추가
+                    if current_stage == 4:
+                        for platform in moving_platforms:
+                            all_platforms.append(platform.rect())
+                    
+                    # 플레이어 간 충돌 처리를 위해 다른 플레이어 리스트 전달
+                    for i, player in enumerate(active_players):
+                        other_players = [p for j, p in enumerate(active_players) if j != i]
+                        player.update(keys, all_platforms, other_players)
+                    
+                    # 움직이는 발판 업데이트
+                    if current_stage == 4:
+                        for platform in moving_platforms:
+                            platform.update()
+                
                 key_obj.update(active_players)
                 door_obj.update(active_players)
+                
+                # 3스테이지: 가시 충돌 체크 및 버튼 처리
+                if current_stage == 3 and spike is not None:
+                    # 가시 충돌 체크 (게임 오버)
+                    if spike.check_collision(active_players):
+                        # 게임 오버: 스테이지 리셋
+                        stage_result = create_stage_objects(current_stage, player_colors)
+                        players, key_obj, door_obj, platforms, moving_platforms, spike, floor_button = stage_result
+                        active_players = players[:selected_player_count]
+                        door_obj.reset_interactions(active_players)
+                    
+                    # 버튼 업데이트
+                    if floor_button is not None and floor_button.update(active_players):
+                        # 버튼이 눌리면 바닥 생성 (뚫려있는 곳 매꾸기)
+                        gap_platform = pygame.Rect(400, 580, 160, 60)  # 400~560 사이
+                        platforms.append(gap_platform)
+                
+                # 4스테이지: 하단 가시 충돌 체크
+                if current_stage == 4 and bottom_spike is not None:
+                    # 가시 충돌 체크 (게임 오버)
+                    if bottom_spike.check_collision(active_players):
+                        # 게임 오버: 스테이지 리셋
+                        stage_result = create_stage_objects(current_stage, player_colors)
+                        players, key_obj, door_obj, platforms, moving_platforms, bottom_spike = stage_result
+                        active_players = players[:selected_player_count]
+                        door_obj.reset_interactions(active_players)
                 
                 # 문과의 상호작용 체크 (지속적으로)
                 door_obj.check_interaction(active_players, keys)
@@ -567,9 +702,25 @@ def main():
                     if players_at_door:
                         interacted_count = sum(1 for p in active_players if p.interacted_with_door)
                         total_count = len(active_players)
-                        hint_text = f"Press keys to enter ({interacted_count}/{total_count})"
+                        hint_text = f"Press \"Down keys\" to enter ({interacted_count}/{total_count})"
                         hint = font.render(hint_text, True, PICO_TEXT_COLOR)
-                        screen.blit(hint, (door_obj.x - 80, door_obj.y - 40))
+                        screen.blit(hint, (door_obj.x - 250, door_obj.y - 60))
+            # 움직이는 발판 렌더링
+            if current_stage == 4:
+                for platform in moving_platforms:
+                    platform.draw(screen)
+            
+            # 3스테이지: 가시와 버튼 렌더링
+            if current_stage == 3:
+                if spike is not None and (floor_button is None or not floor_button.pressed):
+                    spike.draw(screen)
+                if floor_button is not None:
+                    floor_button.draw(screen, font)
+            
+            # 4스테이지: 하단 가시 렌더링
+            if current_stage == 4 and bottom_spike is not None:
+                bottom_spike.draw(screen)
+            
             # 플레이어 렌더링 (문 안으로 들어간 플레이어는 먼저 그리기)
             for player in active_players:
                 if player.entered_door:
@@ -579,6 +730,27 @@ def main():
                     player.draw(screen)
             key_obj.draw(screen)
             door_obj.draw(screen, font)
+            
+            # 1스테이지: 조작키 설명 표시
+            if current_stage == 1:
+                controls_text = [
+                    "Player 1: Arrow Keys (↑↓←→)",
+                    "Player 2: WASD (W/A/S/D)",
+                    "Player 3: IJKL (I/J/K/L)"
+                ]
+                y_offset = 50
+                for i, text in enumerate(controls_text):
+                    if i < selected_player_count:
+                        control_label = font.render(text, True, PICO_TEXT_COLOR)
+                        screen.blit(control_label, (10, y_offset + i * 30))
+            
+            # 4스테이지: 동기화 메시지 표시
+            if current_stage == 4:
+                sync_message = "All players must input the same action to move!"
+                sync_label = font.render(sync_message, True, PICO_TEXT_COLOR)
+                # 화면 상단 중앙에 표시
+                message_x = (WIDTH - sync_label.get_width()) // 2
+                screen.blit(sync_label, (message_x, 50))
 
             stage_label = font.render(f"Stage {current_stage}", True, PICO_TEXT_COLOR)
             screen.blit(stage_label, (WIDTH - stage_label.get_width() - 12, 12))
@@ -591,7 +763,7 @@ def main():
                 
                 # Pause 창 크기와 위치 (화면 중앙, 상대적 위치) - 더 넓게
                 panel_width = 760
-                panel_height = 580
+                panel_height = 650  # 버튼 4개를 위해 높이 증가
                 panel_x = (WIDTH - panel_width) // 2
                 panel_y = (HEIGHT - panel_height) // 2
                 
@@ -647,7 +819,7 @@ def main():
                 button_start_y = panel_y + label_y_offset + 150
                 
                 # 버튼 위치 업데이트
-                pause_buttons = ["resume", "back_to_menu", "quit_game"]
+                pause_buttons = ["resume", "reset_stage", "back_to_menu", "quit_game"]
                 for idx, btn_key in enumerate(pause_buttons):
                     btn = buttons[btn_key]
                     btn.rect.x = button_x
@@ -711,3 +883,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
