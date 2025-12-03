@@ -168,8 +168,63 @@ class Player:
         self.y = min(self.y, HEIGHT - self.h)
 
     def draw(self, surface):
-
-        pygame.draw.rect(surface, self.color, (int(self.x), int(self.y), self.w, self.h))
+        """플레이어 디자인"""
+        x = int(self.x)
+        y = int(self.y)
+        w = self.w
+        h = self.h
+        
+        # 머리 부분 (원형)
+        head_radius = w // 2
+        head_center_x = x + w // 2
+        head_center_y = y + head_radius
+        
+        # 머리 원 그리기
+        pygame.draw.circle(surface, self.color, (head_center_x, head_center_y), head_radius)
+        
+        # 몸통 부분 (아래쪽 파도 모양)
+        body_height = h - head_radius
+        body_top_y = head_center_y
+        body_bottom_y = y + h
+        
+        # 몸통의 기본 사각형
+        body_rect = pygame.Rect(x, body_top_y, w, body_height)
+        pygame.draw.rect(surface, self.color, body_rect)
+        
+        # 아래쪽 파도 모양 만들기 (3개의 작은 반원)
+        wave_count = 3
+        wave_width = w // wave_count
+        wave_height = 8  # 파도의 깊이
+        
+        for i in range(wave_count + 1):  # +1은 오른쪽 끝을 위해
+            wave_x = x + i * wave_width
+            # 각 파도는 작은 반원으로 표현
+            if i < wave_count:
+                # 파도가 들어가는 부분 (사각형으로 제거)
+                wave_rect = pygame.Rect(wave_x, body_bottom_y - wave_height, wave_width, wave_height * 2)
+                # 배경색으로 덮어서 파도 모양 만들기
+                # 대신 작은 원을 그려서 파도 모양 표현
+                wave_center_x = wave_x + wave_width // 2
+                wave_center_y = body_bottom_y
+                # 반원을 그리기 위해 작은 원을 그리고 위쪽을 덮기
+                pygame.draw.circle(surface, self.color, (wave_center_x, wave_center_y), wave_width // 2)
+        
+        # 파도 모양을 더 명확하게 만들기 위해 아래쪽을 다시 그립니다
+        # 각 파도 사이의 공간을 제거하여 파도 모양 완성
+        for i in range(wave_count):
+            wave_x = x + i * wave_width + wave_width // 2
+            wave_center_y = body_bottom_y
+            # 작은 반원을 그려서 파도 모양 만들기
+            pygame.draw.circle(surface, self.color, (wave_x, wave_center_y), wave_width // 2)
+        
+        # 눈 그리기 (작은 원 2개)
+        eye_size = 4
+        left_eye_x = head_center_x - head_radius // 2
+        right_eye_x = head_center_x + head_radius // 2
+        eye_y = head_center_y - head_radius // 3
+        pygame.draw.circle(surface, (0, 0, 0), (left_eye_x, eye_y), eye_size)
+        pygame.draw.circle(surface, (0, 0, 0), (right_eye_x, eye_y), eye_size)
+        
         if self.has_key:
             pygame.draw.rect(
                 surface, (255, 215, 0), (int(self.x + self.w + 6), int(self.y + 12), 18, 18)
@@ -219,7 +274,7 @@ class Door:
     def draw(self, surface, font):
         color = (60, 200, 60) if self.open else (150, 90, 60)
         pygame.draw.rect(surface, color, (self.x, self.y, self.w, self.h))
-        label = font.render("Open" if self.open else "Door", True, PICO_TEXT_COLOR)
+        label = font.render("Open" if self.open else "", True, PICO_TEXT_COLOR)
         surface.blit(label, (self.x - 5, self.y - 28))
 
     def update(self, players):
@@ -237,17 +292,25 @@ class Door:
         door_rect = self.rect()
         for player in players:
             if door_rect.colliderect(player.rect()):
-                try:
-                    key_pressed = keys[player.key_interact] and not player.entered_door
-                except (IndexError, TypeError):
-                    key_pressed = False
+                # SyncedPlayer인 경우 모든 플레이어의 상호작용 키를 확인
+                from entities import SyncedPlayer
+                if isinstance(player, SyncedPlayer):
+                    # 4스테이지: 모든 플레이어가 같은 상호작용 키를 눌러야 함
+                    # DOWN, S, K 키 중 하나라도 누르면 상호작용
+                    key_pressed = (keys[pygame.K_DOWN] or keys[pygame.K_s] or keys[pygame.K_k]) and not player.entered_door
+                else:
+                    try:
+                        key_pressed = keys[player.key_interact] and not player.entered_door
+                    except (IndexError, TypeError, AttributeError):
+                        key_pressed = False
                 if key_pressed:
                     player.interacted_with_door = True
                     player.entered_door = True
                     # 플레이어를 문의 중앙으로 이동
                     player.x = self.x + (self.w - player.w) / 2
                     player.y = self.y + (self.h - player.h) / 2
-                    player.vel_y = 0  # 속도 초기화
+                    if hasattr(player, 'vel_y'):
+                        player.vel_y = 0  # 속도 초기화
 
     def all_players_interacted(self, players):
         """모든 플레이어가 문과 상호작용했는지 확인"""
@@ -372,12 +435,14 @@ class MovingPlatform:
         else:
             self.direction = 1  # 아래로 시작 (y 증가)
         self.start_y = float(y)
+        self.last_y = float(y)  # 이전 프레임의 Y 위치
     
     def rect(self):
         return pygame.Rect(int(self.x), int(self.y), self.w, self.h)
     
     def update(self):
         """발판 이동 업데이트"""
+        self.last_y = self.y  # 이전 위치 저장
         self.y += self.speed * self.direction
         
         # Y 좌표계: 위쪽이 작은 값, 아래쪽이 큰 값
@@ -390,6 +455,10 @@ class MovingPlatform:
             if self.y <= self.max_y:  # 위쪽 한계에 도달
                 self.y = self.max_y
                 self.direction = 1  # 아래로 방향 전환
+    
+    def get_movement_delta(self):
+        """이번 프레임에서 발판이 이동한 거리 반환"""
+        return self.y - self.last_y
     
     def draw(self, surface):
         """발판 그리기"""
@@ -489,7 +558,54 @@ class SyncedPlayer:
         self.y = min(self.y, HEIGHT - self.h)
     
     def draw(self, surface):
-        pygame.draw.rect(surface, self.color, (int(self.x), int(self.y), self.w, self.h))
+        """유령 모양으로 플레이어 그리기"""
+        x = int(self.x)
+        y = int(self.y)
+        w = self.w
+        h = self.h
+        
+        # 머리 부분 (원형)
+        head_radius = w // 2
+        head_center_x = x + w // 2
+        head_center_y = y + head_radius
+        
+        # 머리 원 그리기
+        pygame.draw.circle(surface, self.color, (head_center_x, head_center_y), head_radius)
+        
+        # 몸통 부분 (아래쪽 파도 모양)
+        body_height = h - head_radius
+        body_top_y = head_center_y
+        body_bottom_y = y + h
+        
+        # 몸통의 기본 사각형
+        body_rect = pygame.Rect(x, body_top_y, w, body_height)
+        pygame.draw.rect(surface, self.color, body_rect)
+        
+        # 아래쪽 파도 모양 만들기 (3개의 작은 반원으로 파도 효과)
+        wave_count = 3
+        wave_width = w // wave_count
+        
+        # 각 파도 위치에 작은 원을 그려서 파도 모양 만들기
+        for i in range(wave_count):
+            wave_center_x = x + i * wave_width + wave_width // 2
+            wave_center_y = body_bottom_y
+            wave_radius = wave_width // 2
+            
+            # 작은 원을 그려서 파도 모양 표현
+            pygame.draw.circle(surface, self.color, (wave_center_x, wave_center_y), wave_radius)
+        
+        # 파도 사이의 공간을 채우기 위해 아래쪽에 사각형 추가
+        wave_fill_rect = pygame.Rect(x, body_bottom_y - wave_width // 2, w, wave_width // 2)
+        pygame.draw.rect(surface, self.color, wave_fill_rect)
+        
+        # 눈 그리기 (작은 원 2개)
+        eye_size = 4
+        left_eye_x = head_center_x - head_radius // 2
+        right_eye_x = head_center_x + head_radius // 2
+        eye_y = head_center_y - head_radius // 3
+        pygame.draw.circle(surface, (0, 0, 0), (left_eye_x, eye_y), eye_size)
+        pygame.draw.circle(surface, (0, 0, 0), (right_eye_x, eye_y), eye_size)
+        
         if self.has_key:
             pygame.draw.rect(surface, (255, 215, 0), (int(self.x + self.w + 6), int(self.y + 12), 18, 18))
 
@@ -560,10 +676,15 @@ class FloorButton:
     def update(self, players):
         """플레이어가 버튼을 눌렀는지 확인"""
         button_rect = self.rect()
+        any_player_on_button = False
         for player in players:
             if button_rect.colliderect(player.rect()):
+                any_player_on_button = True
                 if not self.pressed:
                     self.pressed = True
                     return True
+        
+        # 플레이어가 버튼 위에 없으면 pressed 상태 유지 (한 번 눌리면 계속 눌린 상태)
+        # 리셋할 때는 새로운 객체가 생성되므로 초기화됨
         return False
 

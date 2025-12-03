@@ -165,27 +165,47 @@ def main():
     ]
     
     # 게임 오브젝트 초기화 (player_colors 정의 후)
-    stage_result = create_stage_objects(current_stage, player_colors)
+    stage_result = create_stage_objects(current_stage, player_colors, selected_player_count)
     if len(stage_result) == 7:
         # 3스테이지: spike, floor_button 포함
         players, key_obj, door_obj, platforms, moving_platforms, spike, floor_button = stage_result
         bottom_spike = None
+        door_spike = None
     elif len(stage_result) == 6:
-        # 4스테이지: bottom_spike 포함
-        players, key_obj, door_obj, platforms, moving_platforms, bottom_spike = stage_result
-        spike = None
-        floor_button = None
+        # 4스테이지, 5스테이지, 또는 6스테이지
+        if current_stage == 4:
+            players, key_obj, door_obj, platforms, moving_platforms, bottom_spike = stage_result
+            spike = None
+            floor_button = None
+            door_spike = None
+            floor_spikes = None
+        elif current_stage == 5:
+            players, key_obj, door_obj, platforms, moving_platforms, door_spike = stage_result
+            spike = None
+            floor_button = None
+            bottom_spike = None
+            floor_spikes = None
+        else:  # 6스테이지
+            players, key_obj, door_obj, platforms, moving_platforms, floor_spikes = stage_result
+            spike = None
+            floor_button = None
+            bottom_spike = None
+            door_spike = None
     elif len(stage_result) == 5:
         players, key_obj, door_obj, platforms, moving_platforms = stage_result
         spike = None
         floor_button = None
         bottom_spike = None
+        door_spike = None
+        floor_spikes = None
     else:
         players, key_obj, door_obj, platforms = stage_result
         moving_platforms = []
         spike = None
         floor_button = None
         bottom_spike = None
+        door_spike = None
+        floor_spikes = None
 
     running = True
     while running:
@@ -325,25 +345,47 @@ def main():
                     # 잠금 해제된 스테이지만 클릭 가능
                     if stage_num in unlocked_stages and button.handle_event(event):
                         current_stage = stage_num
-                        stage_result = create_stage_objects(current_stage, player_colors)
+                        stage_result = create_stage_objects(current_stage, player_colors, selected_player_count)
                         if len(stage_result) == 7:
                             players, key_obj, door_obj, platforms, moving_platforms, spike, floor_button = stage_result
                             bottom_spike = None
+                            door_spike = None
+                            floor_spikes = None
                         elif len(stage_result) == 6:
-                            players, key_obj, door_obj, platforms, moving_platforms, bottom_spike = stage_result
-                            spike = None
-                            floor_button = None
+                            # 4스테이지, 5스테이지, 또는 6스테이지
+                            if current_stage == 4:
+                                players, key_obj, door_obj, platforms, moving_platforms, bottom_spike = stage_result
+                                spike = None
+                                floor_button = None
+                                door_spike = None
+                                floor_spikes = None
+                            elif current_stage == 5:
+                                players, key_obj, door_obj, platforms, moving_platforms, door_spike = stage_result
+                                spike = None
+                                floor_button = None
+                                bottom_spike = None
+                                floor_spikes = None
+                            else:  # 6스테이지
+                                players, key_obj, door_obj, platforms, moving_platforms, floor_spikes = stage_result
+                                spike = None
+                                floor_button = None
+                                bottom_spike = None
+                                door_spike = None
                         elif len(stage_result) == 5:
                             players, key_obj, door_obj, platforms, moving_platforms = stage_result
                             spike = None
                             floor_button = None
                             bottom_spike = None
+                            door_spike = None
+                            floor_spikes = None
                         else:
                             players, key_obj, door_obj, platforms = stage_result
                             moving_platforms = []
                             spike = None
                             floor_button = None
                             bottom_spike = None
+                            door_spike = None
+                            floor_spikes = None
                         # 상호작용 상태 초기화
                         active_players = players[:selected_player_count]
                         door_obj.reset_interactions(active_players)
@@ -370,25 +412,47 @@ def main():
                         state = STATE_GAME  # 게임 재개
                     if buttons["reset_stage"].handle_event(event):
                         # 스테이지 리셋: 현재 스테이지 재초기화
-                        stage_result = create_stage_objects(current_stage, player_colors)
+                        stage_result = create_stage_objects(current_stage, player_colors, selected_player_count)
                         if len(stage_result) == 7:
                             players, key_obj, door_obj, platforms, moving_platforms, spike, floor_button = stage_result
                             bottom_spike = None
+                            door_spike = None
+                            floor_spikes = None
                         elif len(stage_result) == 6:
-                            players, key_obj, door_obj, platforms, moving_platforms, bottom_spike = stage_result
-                            spike = None
-                            floor_button = None
+                            # 4스테이지, 5스테이지, 또는 6스테이지
+                            if current_stage == 4:
+                                players, key_obj, door_obj, platforms, moving_platforms, bottom_spike = stage_result
+                                spike = None
+                                floor_button = None
+                                door_spike = None
+                                floor_spikes = None
+                            elif current_stage == 5:
+                                players, key_obj, door_obj, platforms, moving_platforms, door_spike = stage_result
+                                spike = None
+                                floor_button = None
+                                bottom_spike = None
+                                floor_spikes = None
+                            else:  # 6스테이지
+                                players, key_obj, door_obj, platforms, moving_platforms, floor_spikes = stage_result
+                                spike = None
+                                floor_button = None
+                                bottom_spike = None
+                                door_spike = None
                         elif len(stage_result) == 5:
                             players, key_obj, door_obj, platforms, moving_platforms = stage_result
                             spike = None
                             floor_button = None
                             bottom_spike = None
+                            door_spike = None
+                            floor_spikes = None
                         else:
                             players, key_obj, door_obj, platforms = stage_result
                             moving_platforms = []
                             spike = None
                             floor_button = None
                             bottom_spike = None
+                            door_spike = None
+                            floor_spikes = None
                         # 상호작용 상태 초기화
                         active_players = players[:selected_player_count]
                         door_obj.reset_interactions(active_players)
@@ -603,8 +667,8 @@ def main():
             if state == STATE_GAME:
                 keys = pygame.key.get_pressed()
                 
-                # 4스테이지: 동기화된 플레이어 처리
-                if current_stage == 4 and len(active_players) > 0:
+                # 4스테이지, 6스테이지: 동기화된 플레이어 처리
+                if (current_stage == 4 or current_stage == 6) and len(active_players) > 0:
                     from entities import SyncedPlayer
                     if isinstance(active_players[0], SyncedPlayer):
                         # 모든 플레이어의 키 입력을 수집
@@ -623,31 +687,94 @@ def main():
                                              pygame.K_i: keys[pygame.K_i], pygame.K_k: keys[pygame.K_k]}
                             all_players_keys.append(player_keys)
                         
+                        # 움직이는 발판 업데이트 (플레이어 업데이트 전에)
+                        for platform in moving_platforms:
+                            platform.update()
+                        
+                        # 플레이어가 움직이는 발판 위에 있는지 미리 확인하고 함께 이동
+                        player = active_players[0]
+                        player_rect = player.rect()
+                        was_on_moving_platform = False
+                        for platform in moving_platforms:
+                            platform_rect = platform.rect()
+                            # 플레이어가 발판 위에 있는지 확인 (발판의 위쪽 가장자리에 플레이어가 서 있는 경우)
+                            if (player_rect.colliderect(platform_rect) and 
+                                abs(player_rect.bottom - platform_rect.top) < 5 and 
+                                player.on_ground):
+                                # 발판이 이동한 만큼 플레이어도 함께 이동
+                                movement_delta = platform.get_movement_delta()
+                                player.y += movement_delta
+                                was_on_moving_platform = True
+                        
                         # 움직이는 발판을 플랫폼으로 추가
                         all_platforms = platforms + [p.rect() for p in moving_platforms]
                         active_players[0].update(keys, platforms, all_platforms, all_players_keys)
                         
-                        # 움직이는 발판 업데이트
+                        # 플레이어가 점프 직후에도 발판 위에 있다면 발판과 함께 이동 (가장자리에서 점프할 때)
+                        player = active_players[0]
+                        player_rect = player.rect()
                         for platform in moving_platforms:
-                            platform.update()
+                            platform_rect = platform.rect()
+                            # 플레이어가 발판 위에 있고, 플레이어의 X 위치가 발판 범위 내에 있는 경우
+                            if (player_rect.colliderect(platform_rect) and 
+                                player_rect.left < platform_rect.right and 
+                                player_rect.right > platform_rect.left):
+                                # 발판이 이동한 만큼 플레이어도 함께 이동 (점프 중에도)
+                                movement_delta = platform.get_movement_delta()
+                                if abs(movement_delta) > 0.1:  # 발판이 실제로 움직였을 때만
+                                    player.y += movement_delta
+                                    # 플레이어가 발판 위에 서 있는 경우에만 on_ground 유지
+                                    if abs(player_rect.bottom - platform_rect.top) < 5:
+                                        player.on_ground = True
                 else:
                     # 일반 플레이어 처리
                     all_platforms = platforms.copy()
                     
                     # 움직이는 발판도 플랫폼으로 추가
-                    if current_stage == 4:
+                    if current_stage == 4 or current_stage == 5:
                         for platform in moving_platforms:
                             all_platforms.append(platform.rect())
+                    
+                    # 움직이는 발판 업데이트 (플레이어 업데이트 전에)
+                    if current_stage == 4 or current_stage == 5:
+                        for platform in moving_platforms:
+                            platform.update()
+                        
+                        # 플레이어가 움직이는 발판 위에 있는지 미리 확인하고 함께 이동
+                        for player in active_players:
+                            player_rect = player.rect()
+                            for platform in moving_platforms:
+                                platform_rect = platform.rect()
+                                # 플레이어가 발판 위에 있는지 확인 (발판의 위쪽 가장자리에 플레이어가 서 있는 경우)
+                                if (player_rect.colliderect(platform_rect) and 
+                                    abs(player_rect.bottom - platform_rect.top) < 5 and 
+                                    player.on_ground):
+                                    # 발판이 이동한 만큼 플레이어도 함께 이동
+                                    movement_delta = platform.get_movement_delta()
+                                    player.y += movement_delta
                     
                     # 플레이어 간 충돌 처리를 위해 다른 플레이어 리스트 전달
                     for i, player in enumerate(active_players):
                         other_players = [p for j, p in enumerate(active_players) if j != i]
                         player.update(keys, all_platforms, other_players)
                     
-                    # 움직이는 발판 업데이트
-                    if current_stage == 4:
-                        for platform in moving_platforms:
-                            platform.update()
+                    # 플레이어가 점프 직후에도 발판 위에 있다면 발판과 함께 이동 (가장자리에서 점프할 때)
+                    if current_stage == 4 or current_stage == 5:
+                        for player in active_players:
+                            player_rect = player.rect()
+                            for platform in moving_platforms:
+                                platform_rect = platform.rect()
+                                # 플레이어가 발판 위에 있고, 플레이어의 X 위치가 발판 범위 내에 있는 경우
+                                if (player_rect.colliderect(platform_rect) and 
+                                    player_rect.left < platform_rect.right and 
+                                    player_rect.right > platform_rect.left):
+                                    # 발판이 이동한 만큼 플레이어도 함께 이동 (점프 중에도)
+                                    movement_delta = platform.get_movement_delta()
+                                    if abs(movement_delta) > 0.1:  # 발판이 실제로 움직였을 때만
+                                        player.y += movement_delta
+                                        # 플레이어가 발판 위에 서 있는 경우에만 on_ground 유지
+                                        if abs(player_rect.bottom - platform_rect.top) < 5:
+                                            player.on_ground = True
                 
                 key_obj.update(active_players)
                 door_obj.update(active_players)
@@ -657,26 +784,70 @@ def main():
                     # 가시 충돌 체크 (게임 오버)
                     if spike.check_collision(active_players):
                         # 게임 오버: 스테이지 리셋
-                        stage_result = create_stage_objects(current_stage, player_colors)
+                        stage_result = create_stage_objects(current_stage, player_colors, selected_player_count)
                         players, key_obj, door_obj, platforms, moving_platforms, spike, floor_button = stage_result
                         active_players = players[:selected_player_count]
                         door_obj.reset_interactions(active_players)
+                        door_spike = None
+                        floor_spikes = None
                     
                     # 버튼 업데이트
-                    if floor_button is not None and floor_button.update(active_players):
-                        # 버튼이 눌리면 바닥 생성 (뚫려있는 곳 매꾸기)
-                        gap_platform = pygame.Rect(400, 580, 160, 60)  # 400~560 사이
-                        platforms.append(gap_platform)
+                    if floor_button is not None:
+                        floor_button.update(active_players)
+                        # 버튼이 눌려있으면 바닥 생성 (뚫려있는 곳 매꾸기)
+                        if floor_button.pressed:
+                            gap_platform = pygame.Rect(400, 580, 160, 60)  # 400~560 사이
+                            # 이미 추가되어 있지 않은 경우에만 추가
+                            gap_exists = False
+                            for p in platforms:
+                                if p.x == 400 and p.y == 580 and p.w == 160 and p.h == 60:
+                                    gap_exists = True
+                                    break
+                            if not gap_exists:
+                                platforms.append(gap_platform)
+                        else:
+                            # 버튼이 눌리지 않았으면 gap_platform 제거
+                            platforms = [p for p in platforms if not (p.x == 400 and p.y == 580 and p.w == 160 and p.h == 60)]
                 
                 # 4스테이지: 하단 가시 충돌 체크
                 if current_stage == 4 and bottom_spike is not None:
                     # 가시 충돌 체크 (게임 오버)
                     if bottom_spike.check_collision(active_players):
                         # 게임 오버: 스테이지 리셋
-                        stage_result = create_stage_objects(current_stage, player_colors)
+                        stage_result = create_stage_objects(current_stage, player_colors, selected_player_count)
                         players, key_obj, door_obj, platforms, moving_platforms, bottom_spike = stage_result
                         active_players = players[:selected_player_count]
                         door_obj.reset_interactions(active_players)
+                        door_spike = None
+                        floor_spikes = None
+                
+                # 5스테이지: 문 왼쪽 가시 충돌 체크
+                if current_stage == 5 and door_spike is not None:
+                    # 가시 충돌 체크 (게임 오버)
+                    if door_spike.check_collision(active_players):
+                        # 게임 오버: 스테이지 리셋
+                        stage_result = create_stage_objects(current_stage, player_colors, selected_player_count)
+                        if len(stage_result) == 6:
+                            players, key_obj, door_obj, platforms, moving_platforms, door_spike = stage_result
+                        active_players = players[:selected_player_count]
+                        door_obj.reset_interactions(active_players)
+                
+                # 6스테이지: 바닥 가시 충돌 체크
+                if current_stage == 6 and floor_spikes is not None:
+                    # 모든 가시에 대해 충돌 체크
+                    for spike in floor_spikes:
+                        if spike.check_collision(active_players):
+                            # 게임 오버: 스테이지 리셋
+                            stage_result = create_stage_objects(current_stage, player_colors, selected_player_count)
+                            if len(stage_result) == 6:
+                                players, key_obj, door_obj, platforms, moving_platforms, floor_spikes = stage_result
+                                spike = None
+                                floor_button = None
+                                bottom_spike = None
+                                door_spike = None
+                            active_players = players[:selected_player_count]
+                            door_obj.reset_interactions(active_players)
+                            break
                 
                 # 문과의 상호작용 체크 (지속적으로)
                 door_obj.check_interaction(active_players, keys)
@@ -704,7 +875,11 @@ def main():
                         total_count = len(active_players)
                         hint_text = f"Press \"Down keys\" to enter ({interacted_count}/{total_count})"
                         hint = font.render(hint_text, True, PICO_TEXT_COLOR)
-                        screen.blit(hint, (door_obj.x - 250, door_obj.y - 60))
+                        screen.blit(hint, (door_obj.x - 320, door_obj.y - 60))
+            # 5스테이지: 움직이는 발판 렌더링
+            if current_stage == 5:
+                for platform in moving_platforms:
+                    platform.draw(screen)
             # 움직이는 발판 렌더링
             if current_stage == 4:
                 for platform in moving_platforms:
@@ -720,6 +895,15 @@ def main():
             # 4스테이지: 하단 가시 렌더링
             if current_stage == 4 and bottom_spike is not None:
                 bottom_spike.draw(screen)
+            
+            # 5스테이지: 문 왼쪽 가시 렌더링
+            if current_stage == 5 and door_spike is not None:
+                door_spike.draw(screen)
+            
+            # 6스테이지: 바닥 가시 렌더링
+            if current_stage == 6 and floor_spikes is not None:
+                for spike in floor_spikes:
+                    spike.draw(screen)
             
             # 플레이어 렌더링 (문 안으로 들어간 플레이어는 먼저 그리기)
             for player in active_players:
@@ -744,8 +928,8 @@ def main():
                         control_label = font.render(text, True, PICO_TEXT_COLOR)
                         screen.blit(control_label, (10, y_offset + i * 30))
             
-            # 4스테이지: 동기화 메시지 표시
-            if current_stage == 4:
+            # 4스테이지, 6스테이지: 동기화 메시지 표시
+            if current_stage == 4 or current_stage == 6:
                 sync_message = "All players must input the same action to move!"
                 sync_label = font.render(sync_message, True, PICO_TEXT_COLOR)
                 # 화면 상단 중앙에 표시
