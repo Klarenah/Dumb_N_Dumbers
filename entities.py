@@ -272,10 +272,36 @@ class Door:
         return pygame.Rect(self.x, self.y, self.w, self.h)
 
     def draw(self, surface, font):
-        color = (60, 200, 60) if self.open else (150, 90, 60)
-        pygame.draw.rect(surface, color, (self.x, self.y, self.w, self.h))
-        label = font.render("Open" if self.open else "", True, PICO_TEXT_COLOR)
-        surface.blit(label, (self.x - 5, self.y - 28))
+        # 문 프레임 (어두운 갈색)
+        frame_color = (80, 50, 30)
+        pygame.draw.rect(surface, frame_color, (self.x - 4, self.y - 4, self.w + 8, self.h + 8))
+        
+        # 문 본체 색상
+        if self.open:
+            door_color = (60, 200, 60)  # 열린 문: 초록색
+        else:
+            door_color = (150, 90, 60)  # 닫힌 문: 갈색
+        
+        pygame.draw.rect(surface, door_color, (self.x, self.y, self.w, self.h))
+        
+        # 문 손잡이
+        handle_x = self.x + self.w - 12 if self.open else self.x + 8
+        handle_y = self.y + self.h // 2
+        pygame.draw.circle(surface, (200, 200, 200), (handle_x, handle_y), 4)
+        pygame.draw.circle(surface, (100, 100, 100), (handle_x, handle_y), 4, 1)
+        
+        # 문 패널 디테일 (수직선)
+        for i in range(2):
+            line_x = self.x + (i + 1) * (self.w // 3)
+            pygame.draw.line(surface, (100, 60, 40), (line_x, self.y + 8), (line_x, self.y + self.h - 8), 2)
+        
+        # 문 가로선 디테일
+        for i in range(2):
+            line_y = self.y + (i + 1) * (self.h // 3)
+            pygame.draw.line(surface, (100, 60, 40), (self.x + 8, line_y), (self.x + self.w - 8, line_y), 2)
+        
+        # 문 테두리
+        pygame.draw.rect(surface, (0, 0, 0), (self.x, self.y, self.w, self.h), 2)
 
     def update(self, players):
         """players는 Player 객체의 리스트"""
