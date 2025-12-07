@@ -6,6 +6,7 @@ import pygame
 from config import WIDTH, HEIGHT, TITLE, FPS, BACKGROUND_COLOR, MAX_STAGE, PICO_TEXT_COLOR, PICO_FLOOR_COLOR
 from stages import create_stage_objects
 from ui import Button, Slider, draw_text_center
+from sound_manager import init_sound_manager
 
 
 STATE_MAIN = "main"
@@ -46,8 +47,9 @@ def initialize_buttons():
         "go_back": Button(360, 400, 240, 70, "GO BACK", color=(200, 200, 200), hover=(220, 220, 220)),
         # Pause 창 버튼들
         "resume": Button(360, 380, 240, 70, "RESUME", color=(180, 255, 180), hover=(200, 255, 200)),
-        "back_to_menu": Button(360, 470, 240, 70, "GO BACK TO MAIN MENU", color=(200, 220, 255), hover=(220, 240, 255)),
-        "quit_game": Button(360, 560, 240, 70, "QUIT GAME", color=(255, 200, 200), hover=(255, 220, 220)),
+        "reset_stage": Button(360, 470, 240, 70, "RESTART", color=(255, 255, 180), hover=(255, 255, 200)),
+        "back_to_menu": Button(360, 560, 240, 70, "GO BACK TO MAIN MENU", color=(200, 220, 255), hover=(220, 240, 255)),
+        "quit_game": Button(360, 650, 240, 70, "QUIT GAME", color=(255, 200, 200), hover=(255, 220, 220)),
         "next": Button(360, 420, 220, 70, "NEXT", color=(200, 255, 200), hover=(180, 255, 180)),
     }
 
@@ -108,6 +110,52 @@ def draw_grass_background(screen):
     pygame.draw.rect(screen, PICO_FLOOR_COLOR, (0, floor_y, WIDTH, floor_height))
 
 
+def draw_character_preview(surface, x, y, size, color):
+    """캐릭터 미리보기 그리기 (Player.draw() 스타일)"""
+    w = size
+    h = int(size * 1.4)  # 실제 플레이어 비율 (40x56)
+    
+    # 머리 부분 (원형)
+    head_radius = w // 2
+    head_center_x = x + w // 2
+    head_center_y = y + head_radius
+    
+    # 머리 원 그리기
+    pygame.draw.circle(surface, color, (head_center_x, head_center_y), head_radius)
+    
+    # 몸통 부분 (아래쪽 파도 모양)
+    body_height = h - head_radius
+    body_top_y = head_center_y
+    body_bottom_y = y + h
+    
+    # 몸통의 기본 사각형
+    body_rect = pygame.Rect(x, body_top_y, w, body_height)
+    pygame.draw.rect(surface, color, body_rect)
+    
+    # 아래쪽 파도 모양 만들기 (3개의 작은 반원)
+    wave_count = 3
+    wave_width = w // wave_count
+    
+    # 각 파도 위치에 작은 원을 그려서 파도 모양 만들기
+    for i in range(wave_count):
+        wave_center_x = x + i * wave_width + wave_width // 2
+        wave_center_y = body_bottom_y
+        wave_radius = wave_width // 2
+        pygame.draw.circle(surface, color, (wave_center_x, wave_center_y), wave_radius)
+    
+    # 파도 사이의 공간을 채우기 위해 아래쪽에 사각형 추가
+    wave_fill_rect = pygame.Rect(x, body_bottom_y - wave_width // 2, w, wave_width // 2)
+    pygame.draw.rect(surface, color, wave_fill_rect)
+    
+    # 눈 그리기 (작은 원 2개)
+    eye_size = 3
+    left_eye_x = head_center_x - head_radius // 2
+    right_eye_x = head_center_x + head_radius // 2
+    eye_y = head_center_y - head_radius // 3
+    pygame.draw.circle(surface, (0, 0, 0), (left_eye_x, eye_y), eye_size)
+    pygame.draw.circle(surface, (0, 0, 0), (right_eye_x, eye_y), eye_size)
+
+
 def draw_confirm_popup(screen, font, korean_font, buttons, message):
     """확인 팝업 그리기"""
     # 반투명 배경 오버레이
@@ -142,11 +190,16 @@ def main():
     buttons = initialize_buttons()
     stage_buttons = create_stage_buttons(MAX_STAGE)
     sound_slider, sfx_slider = initialize_sliders()
+    
+    # Sound manager 초기화
+    sound_manager = init_sound_manager()
+    sound_manager.set_bgm_volume(sound_slider.value)
+    sound_manager.set_sfx_volume(sfx_slider.value)
 
     state = STATE_MAIN
+    previous_state = ""
     selected_player_count = 2  # 최소 2명
     current_stage = 1
-    unlocked_stages = [1]  # 잠금 해제된 스테이지 (초기값: Stage 1만 해제)
     show_exit_confirm = False  # Exit 확인 팝업 표시 여부 (오버레이 방식)
     pause_quit_confirm = False  # Pause 창에서 Quit Game 확인 팝업
     # 슬라이더 원래 위치 저장 (Settings 창 복원용)
@@ -163,8 +216,52 @@ def main():
         (255, 100, 150), (100, 255, 200), (200, 200, 200)  # 분홍색, 청록색, 회색
     ]
     
+    # 효과음 재생을 위한 이전 상태 추적
+    previous_key_collected = False
+    previous_door_open = False
+    
     # 게임 오브젝트 초기화 (player_colors 정의 후)
-    players, key_obj, door_obj, platforms = create_stage_objects(current_stage, player_colors)
+    stage_result = create_stage_objects(current_stage, player_colors, selected_player_count)
+    if len(stage_result) == 7:
+        # 3스테이지: spike, floor_button 포함
+        players, key_obj, door_obj, platforms, moving_platforms, spike, floor_button = stage_result
+        bottom_spike = None
+        door_spike = None
+    elif len(stage_result) == 6:
+        # 4스테이지, 5스테이지, 또는 6스테이지
+        if current_stage == 4:
+            players, key_obj, door_obj, platforms, moving_platforms, bottom_spike = stage_result
+            spike = None
+            floor_button = None
+            door_spike = None
+            floor_spikes = None
+        elif current_stage == 5:
+            players, key_obj, door_obj, platforms, moving_platforms, door_spike = stage_result
+            spike = None
+            floor_button = None
+            bottom_spike = None
+            floor_spikes = None
+        else:  # 6스테이지
+            players, key_obj, door_obj, platforms, moving_platforms, floor_spikes = stage_result
+            spike = None
+            floor_button = None
+            bottom_spike = None
+            door_spike = None
+    elif len(stage_result) == 5:
+        players, key_obj, door_obj, platforms, moving_platforms = stage_result
+        spike = None
+        floor_button = None
+        bottom_spike = None
+        door_spike = None
+        floor_spikes = None
+    else:
+        players, key_obj, door_obj, platforms = stage_result
+        moving_platforms = []
+        spike = None
+        floor_button = None
+        bottom_spike = None
+        door_spike = None
+        floor_spikes = None
 
     running = True
     while running:
@@ -195,8 +292,14 @@ def main():
 
             # Settings와 Pause 창 모두에서 슬라이더 처리
             if state == STATE_SETTINGS or state == STATE_PAUSE:
+                old_bgm_volume = sound_slider.value
+                old_sfx_volume = sfx_slider.value
                 sound_slider.handle_event(event)
                 sfx_slider.handle_event(event)
+                if abs(sound_slider.value - old_bgm_volume) > 0.01:
+                    sound_manager.set_bgm_volume(sound_slider.value)
+                if abs(sfx_slider.value - old_sfx_volume) > 0.01:
+                    sound_manager.set_sfx_volume(sfx_slider.value)
 
             if state == STATE_MAIN:
                 # 피코파크 스타일: 아무 키나 누르거나 마우스 클릭하면 메뉴 화면으로
@@ -218,10 +321,13 @@ def main():
                 else:
                     # 메뉴 화면 버튼 처리
                     if buttons["game_start"].handle_event(event):
+                        sound_manager.play_sfx('enter')
                         state = STATE_SELECT_PLAYER_COUNT
                     if buttons["settings"].handle_event(event):
+                        sound_manager.play_sfx('enter')
                         state = STATE_SETTINGS
                     if buttons["exit"].handle_event(event):
+                        sound_manager.play_sfx('enter')
                         show_exit_confirm = True  # Exit 확인 팝업 표시
 
             elif state == STATE_SELECT_PLAYER_COUNT:
@@ -271,6 +377,7 @@ def main():
                                 if btn_x <= mx <= btn_x + btn_size and btn_y <= my <= btn_y + btn_size:
                                     player_colors[showing_color_picker] = color
                                     showing_color_picker = None
+                                    sound_manager.play_sfx('enter')
                                     break
                     else:
                         # 이름 편집 영역 클릭 확인
@@ -278,7 +385,7 @@ def main():
                         box_spacing = 30
                         total_width = selected_player_count * box_width + (selected_player_count - 1) * box_spacing
                         start_x = (WIDTH - total_width) // 2
-                        box_y = 150
+                        box_y = 100  # 위로 올림
                         
                         for i in range(selected_player_count):
                             box_x = start_x + i * (box_width + box_spacing)
@@ -287,9 +394,12 @@ def main():
                                 editing_player_name = i
                                 break
                             
-                            # 색상 선택 버튼 클릭 확인
-                            color_btn_y = box_y + 80 + 60 + 20
-                            color_btn_rect = pygame.Rect(box_x + 50, color_btn_y, box_width - 100, 40)
+                            # 색상 선택 버튼 클릭 확인 (실제 버튼 크기와 동일하게, 가장자리 포함)
+                            char_size = 60
+                            char_y = box_y + 80
+                            color_btn_y = char_y + int(char_size * 1.4) + 20
+                            color_btn_width = box_width - 40
+                            color_btn_rect = pygame.Rect(box_x + 20, color_btn_y, color_btn_width, 40)
                             if color_btn_rect.collidepoint(mx, my):
                                 showing_color_picker = i
                                 break
@@ -301,13 +411,55 @@ def main():
             elif state == STATE_STAGE_SELECT:
                 for idx, button in enumerate(stage_buttons):
                     stage_num = idx + 1
-                    # 잠금 해제된 스테이지만 클릭 가능
-                    if stage_num in unlocked_stages and button.handle_event(event):
+                    # 모든 스테이지 클릭 가능
+                    if button.handle_event(event):
                         current_stage = stage_num
-                        players, key_obj, door_obj, platforms = create_stage_objects(current_stage, player_colors)
+                        stage_result = create_stage_objects(current_stage, player_colors, selected_player_count)
+                        if len(stage_result) == 7:
+                            players, key_obj, door_obj, platforms, moving_platforms, spike, floor_button = stage_result
+                            bottom_spike = None
+                            door_spike = None
+                            floor_spikes = None
+                        elif len(stage_result) == 6:
+                            # 4스테이지, 5스테이지, 또는 6스테이지
+                            if current_stage == 4:
+                                players, key_obj, door_obj, platforms, moving_platforms, bottom_spike = stage_result
+                                spike = None
+                                floor_button = None
+                                door_spike = None
+                                floor_spikes = None
+                            elif current_stage == 5:
+                                players, key_obj, door_obj, platforms, moving_platforms, door_spike = stage_result
+                                spike = None
+                                floor_button = None
+                                bottom_spike = None
+                                floor_spikes = None
+                            else:  # 6스테이지
+                                players, key_obj, door_obj, platforms, moving_platforms, floor_spikes = stage_result
+                                spike = None
+                                floor_button = None
+                                bottom_spike = None
+                                door_spike = None
+                        elif len(stage_result) == 5:
+                            players, key_obj, door_obj, platforms, moving_platforms = stage_result
+                            spike = None
+                            floor_button = None
+                            bottom_spike = None
+                            door_spike = None
+                            floor_spikes = None
+                        else:
+                            players, key_obj, door_obj, platforms = stage_result
+                            moving_platforms = []
+                            spike = None
+                            floor_button = None
+                            bottom_spike = None
+                            door_spike = None
+                            floor_spikes = None
                         # 상호작용 상태 초기화
                         active_players = players[:selected_player_count]
                         door_obj.reset_interactions(active_players)
+                        previous_key_collected = False
+                        previous_door_open = False
                         state = STATE_GAME
                         break
 
@@ -329,6 +481,58 @@ def main():
                             sound_slider, sfx_slider, slider_orig_positions
                         )
                         state = STATE_GAME  # 게임 재개
+                    if buttons["reset_stage"].handle_event(event):
+                        # 스테이지 리셋: 현재 스테이지 재초기화
+                        stage_result = create_stage_objects(current_stage, player_colors, selected_player_count)
+                        if len(stage_result) == 7:
+                            players, key_obj, door_obj, platforms, moving_platforms, spike, floor_button = stage_result
+                            bottom_spike = None
+                            door_spike = None
+                            floor_spikes = None
+                        elif len(stage_result) == 6:
+                            # 4스테이지, 5스테이지, 또는 6스테이지
+                            if current_stage == 4:
+                                players, key_obj, door_obj, platforms, moving_platforms, bottom_spike = stage_result
+                                spike = None
+                                floor_button = None
+                                door_spike = None
+                                floor_spikes = None
+                            elif current_stage == 5:
+                                players, key_obj, door_obj, platforms, moving_platforms, door_spike = stage_result
+                                spike = None
+                                floor_button = None
+                                bottom_spike = None
+                                floor_spikes = None
+                            else:  # 6스테이지
+                                players, key_obj, door_obj, platforms, moving_platforms, floor_spikes = stage_result
+                                spike = None
+                                floor_button = None
+                                bottom_spike = None
+                                door_spike = None
+                        elif len(stage_result) == 5:
+                            players, key_obj, door_obj, platforms, moving_platforms = stage_result
+                            spike = None
+                            floor_button = None
+                            bottom_spike = None
+                            door_spike = None
+                            floor_spikes = None
+                        else:
+                            players, key_obj, door_obj, platforms = stage_result
+                            moving_platforms = []
+                            spike = None
+                            floor_button = None
+                            bottom_spike = None
+                            door_spike = None
+                            floor_spikes = None
+                        # 상호작용 상태 초기화
+                        active_players = players[:selected_player_count]
+                        door_obj.reset_interactions(active_players)
+                        previous_key_collected = False
+                        previous_door_open = False
+                        slider_orig_positions = restore_slider_positions(
+                            sound_slider, sfx_slider, slider_orig_positions
+                        )
+                        state = STATE_GAME  # 게임 재개
                     if buttons["back_to_menu"].handle_event(event):
                         slider_orig_positions = restore_slider_positions(
                             sound_slider, sfx_slider, slider_orig_positions
@@ -341,11 +545,40 @@ def main():
                 if buttons["next"].handle_event(event):
                     state = STATE_STAGE_SELECT
 
+        # 상태 변경 시 BGM 재생
+        if state != previous_state or previous_state == "":
+            if state == STATE_MAIN:
+                # 처음 시작 시에만 BGM 재생
+                if previous_state == "":
+                    sound_manager.play_bgm(loop=-1)
+            elif state == STATE_MENU:
+                # 메뉴로 전환 시 BGM 계속 재생 (재시작 안함)
+                pass
+            elif state == STATE_GAME:
+                # 스테이지 진입 시에만 BGM 재시작
+                sound_manager.play_bgm(loop=-1)
+            elif state == STATE_PAUSE:
+                # pause 시 BGM 계속 재생 (일시정지 안함)
+                pass
+            elif state == STATE_CLEAR:
+                sound_manager.play_bgm(loop=0)  # 폴더의 첫 번째 파일 자동 사용
+            elif state == STATE_SETTINGS:
+                # 설정 창으로 전환 시 BGM 계속 재생 (재시작 안함)
+                pass
+            previous_state = state
+
         screen.fill(BACKGROUND_COLOR)
 
         if state == STATE_MAIN:
             # 잔디밭 배경
             draw_grass_background(screen)
+            # 배경 캐릭터 (왼쪽 2마리, 오른쪽 1마리)
+            char_size = 50
+            # 왼쪽 아래 캐릭터 2마리
+            draw_character_preview(screen, 100, HEIGHT - 200, char_size, (30, 120, 255))
+            draw_character_preview(screen, 100, HEIGHT - 280, char_size, (80, 255, 80))
+            # 오른쪽 아래 캐릭터 1마리
+            draw_character_preview(screen, WIDTH - 150, HEIGHT - 200, char_size, (255, 80, 80))
             # 큰 제목 표시
             title_text = "DUMB N DUMBERS"
             title_y = HEIGHT // 2 - 100
@@ -393,6 +626,13 @@ def main():
         elif state == STATE_SELECT_PLAYER_COUNT:
             # 잔디밭 배경
             draw_grass_background(screen)
+            # 배경 캐릭터 (왼쪽 2마리, 오른쪽 1마리)
+            char_size = 50
+            # 왼쪽 아래 캐릭터 2마리
+            draw_character_preview(screen, 100, HEIGHT - 200, char_size, (30, 120, 255))
+            draw_character_preview(screen, 100, HEIGHT - 280, char_size, (80, 255, 80))
+            # 오른쪽 아래 캐릭터 1마리
+            draw_character_preview(screen, WIDTH - 150, HEIGHT - 200, char_size, (255, 80, 80))
             # 제목 (크게)
             draw_text_center(screen, "Select Number of Player", big_font, PICO_TEXT_COLOR, WIDTH // 2, 80)
             # 숫자와 화살표 버튼 수평 정렬 (중앙 기준)
@@ -411,6 +651,11 @@ def main():
         elif state == STATE_CUSTOMIZE_PLAYERS:
             # 잔디밭 배경
             draw_grass_background(screen)
+            # 배경 캐릭터 (왼쪽만 2마리)
+            char_size = 50
+            # 왼쪽 아래 캐릭터 2마리
+            draw_character_preview(screen, 100, HEIGHT - 200, char_size, (30, 120, 255))
+            draw_character_preview(screen, 100, HEIGHT - 280, char_size, (80, 255, 80))
             
             # 플레이어 박스들 그리기
             box_width = 250
@@ -418,7 +663,7 @@ def main():
             box_spacing = 30
             total_width = selected_player_count * box_width + (selected_player_count - 1) * box_spacing
             start_x = (WIDTH - total_width) // 2
-            box_y = 150
+            box_y = 100  # 위로 올림
             
             for i in range(selected_player_count):
                 box_x = start_x + i * (box_width + box_spacing)
@@ -440,16 +685,14 @@ def main():
                 
                 screen.blit(name_surface, (box_x + (box_width - name_surface.get_width()) // 2, name_y))
                 
-                # 캐릭터 (중간)
+                # 캐릭터 (중간) - 캐릭터 아이콘으로 그리기
                 char_size = 60
                 char_x = box_x + (box_width - char_size) // 2
                 char_y = box_y + 80
-                char_rect = pygame.Rect(char_x, char_y, char_size, char_size)
-                pygame.draw.rect(screen, player_colors[i], char_rect)
-                pygame.draw.rect(screen, (0, 0, 0), char_rect, 2)
+                draw_character_preview(screen, char_x, char_y, char_size, player_colors[i])
                 
-                # 색상 선택 버튼 (캐릭터 밑) - 버튼 가로 늘리기
-                color_btn_y = char_y + char_size + 20
+                # 색상 선택 버튼 (캐릭터 밑) - 버튼 가로 늘리기, 클릭 영역 확장
+                color_btn_y = char_y + int(char_size * 1.4) + 20
                 color_btn_width = box_width - 40  # 더 넓게
                 color_btn_rect = pygame.Rect(box_x + 20, color_btn_y, color_btn_width, 40)
                 pygame.draw.rect(screen, player_colors[i], color_btn_rect)
@@ -484,45 +727,31 @@ def main():
                     btn_x = grid_start_x + (i % 3) * (btn_size + btn_spacing)
                     btn_y = grid_start_y + (i // 3) * (btn_size + btn_spacing)
                     color_btn = pygame.Rect(btn_x, btn_y, btn_size, btn_size)
+                    # 팝업에서는 정사각형으로 표시
                     pygame.draw.rect(screen, color, color_btn)
                     pygame.draw.rect(screen, (0, 0, 0), color_btn, 2)
             
-            # Select Stage 버튼 (오른쪽 아래, 바닥 위에)
+            # Select Stage 버튼 (오른쪽 아래, 바닥 위에 간격을 두고)
+            floor_height = 120
+            floor_y = HEIGHT - floor_height
+            # 버튼을 바닥 위에 간격을 두고 배치
+            buttons["select_stage"].rect.y = floor_y - 90  # 바닥에서 90픽셀 위로
             buttons["select_stage"].draw(screen, font, korean_font)
 
         elif state == STATE_STAGE_SELECT:
             # 잔디밭 배경
             draw_grass_background(screen)
+            # 배경 캐릭터 (양쪽 1마리씩, 스테이지 버튼과 떨어져있게)
+            char_size = 50
+            # 왼쪽 아래 캐릭터 (스테이지 버튼 왼쪽에 배치, 버튼 시작 x=150이므로 더 왼쪽으로)
+            draw_character_preview(screen, 50, HEIGHT - 200, char_size, (30, 120, 255))
+            # 오른쪽 아래 캐릭터 (스테이지 버튼 오른쪽에 배치, 버튼 끝 x=150+240*2+180=810이므로 더 오른쪽으로)
+            draw_character_preview(screen, WIDTH - 100, HEIGHT - 200, char_size, (255, 80, 80))
             # 제목 크게
             draw_text_center(screen, "Select Stage", big_font, PICO_TEXT_COLOR, WIDTH // 2, 80)
             for idx, button in enumerate(stage_buttons):
-                stage_num = idx + 1
-                # 잠금 상태 확인
-                is_locked = stage_num not in unlocked_stages
-                
-                if is_locked:
-                    # 잠금된 스테이지: 회색으로 표시
-                    original_color = button.color
-                    original_hover = button.hover
-                    button.color = (150, 150, 150)
-                    button.hover = (150, 150, 150)
-                    button.draw(screen, font)
-                    button.color = original_color
-                    button.hover = original_hover
-                    
-                    # 자물쇠 아이콘 그리기 (간단한 사각형과 원으로)
-                    lock_x = button.rect.x + button.rect.w // 2 - 15
-                    lock_y = button.rect.y + button.rect.h // 2 - 10
-                    # 자물쇠 본체 (사각형)
-                    pygame.draw.rect(screen, (100, 100, 100), (lock_x, lock_y + 8, 30, 20))
-                    # 자물쇠 구멍 (원)
-                    pygame.draw.circle(screen, (100, 100, 100), (lock_x + 15, lock_y + 8), 8)
-                    # 자물쇠 테두리
-                    pygame.draw.rect(screen, (80, 80, 80), (lock_x, lock_y + 8, 30, 20), 2)
-                    pygame.draw.circle(screen, (80, 80, 80), (lock_x + 15, lock_y + 8), 8, 2)
-                else:
-                    # 잠금 해제된 스테이지: 정상 표시
-                    button.draw(screen, font)
+                # 모든 스테이지 정상 표시
+                button.draw(screen, font)
 
         elif state == STATE_GAME or state == STATE_PAUSE:
             # 선택한 플레이어 수만큼만 계산 (한 번만)
@@ -536,12 +765,196 @@ def main():
             if state == STATE_GAME:
                 keys = pygame.key.get_pressed()
                 
-                # 플레이어 간 충돌 처리를 위해 다른 플레이어 리스트 전달
-                for i, player in enumerate(active_players):
-                    other_players = [p for j, p in enumerate(active_players) if j != i]
-                    player.update(keys, platforms, other_players)
+                # 4스테이지, 6스테이지: 동기화된 플레이어 처리
+                if (current_stage == 4 or current_stage == 6) and len(active_players) > 0:
+                    from entities import SyncedPlayer
+                    if isinstance(active_players[0], SyncedPlayer):
+                        # 모든 플레이어의 키 입력을 수집
+                        all_players_keys = []
+                        for i in range(selected_player_count):
+                            player_keys = {}
+                            # 각 플레이어의 키 매핑
+                            if i == 0:  # 플레이어 1: 방향키
+                                player_keys = {pygame.K_LEFT: keys[pygame.K_LEFT], pygame.K_RIGHT: keys[pygame.K_RIGHT], 
+                                             pygame.K_UP: keys[pygame.K_UP], pygame.K_DOWN: keys[pygame.K_DOWN]}
+                            elif i == 1:  # 플레이어 2: WASD
+                                player_keys = {pygame.K_a: keys[pygame.K_a], pygame.K_d: keys[pygame.K_d], 
+                                             pygame.K_w: keys[pygame.K_w], pygame.K_s: keys[pygame.K_s]}
+                            elif i == 2:  # 플레이어 3: IJKL
+                                player_keys = {pygame.K_j: keys[pygame.K_j], pygame.K_l: keys[pygame.K_l], 
+                                             pygame.K_i: keys[pygame.K_i], pygame.K_k: keys[pygame.K_k]}
+                            all_players_keys.append(player_keys)
+                        
+                        # 움직이는 발판 업데이트 (플레이어 업데이트 전에)
+                        for platform in moving_platforms:
+                            platform.update()
+                        
+                        # 플레이어가 움직이는 발판 위에 있는지 미리 확인하고 함께 이동
+                        player = active_players[0]
+                        player_rect = player.rect()
+                        was_on_moving_platform = False
+                        for platform in moving_platforms:
+                            platform_rect = platform.rect()
+                            # 플레이어가 발판 위에 있는지 확인 (발판의 위쪽 가장자리에 플레이어가 서 있는 경우)
+                            if (player_rect.colliderect(platform_rect) and 
+                                abs(player_rect.bottom - platform_rect.top) < 5 and 
+                                player.on_ground):
+                                # 발판이 이동한 만큼 플레이어도 함께 이동
+                                movement_delta = platform.get_movement_delta()
+                                player.y += movement_delta
+                                was_on_moving_platform = True
+                        
+                        # 움직이는 발판을 플랫폼으로 추가
+                        all_platforms = platforms + [p.rect() for p in moving_platforms]
+                        active_players[0].update(keys, platforms, all_platforms, all_players_keys)
+                        
+                        # 플레이어가 점프 직후에도 발판 위에 있다면 발판과 함께 이동 (가장자리에서 점프할 때)
+                        player = active_players[0]
+                        player_rect = player.rect()
+                        for platform in moving_platforms:
+                            platform_rect = platform.rect()
+                            # 플레이어가 발판 위에 있고, 플레이어의 X 위치가 발판 범위 내에 있는 경우
+                            if (player_rect.colliderect(platform_rect) and 
+                                player_rect.left < platform_rect.right and 
+                                player_rect.right > platform_rect.left):
+                                # 발판이 이동한 만큼 플레이어도 함께 이동 (점프 중에도)
+                                movement_delta = platform.get_movement_delta()
+                                if abs(movement_delta) > 0.1:  # 발판이 실제로 움직였을 때만
+                                    player.y += movement_delta
+                                    # 플레이어가 발판 위에 서 있는 경우에만 on_ground 유지
+                                    if abs(player_rect.bottom - platform_rect.top) < 5:
+                                        player.on_ground = True
+                else:
+                    # 일반 플레이어 처리
+                    all_platforms = platforms.copy()
+                    
+                    # 움직이는 발판도 플랫폼으로 추가
+                    if current_stage == 4 or current_stage == 5:
+                        for platform in moving_platforms:
+                            all_platforms.append(platform.rect())
+                    
+                    # 움직이는 발판 업데이트 (플레이어 업데이트 전에)
+                    if current_stage == 4 or current_stage == 5:
+                        for platform in moving_platforms:
+                            platform.update()
+                        
+                        # 플레이어가 움직이는 발판 위에 있는지 미리 확인하고 함께 이동
+                        for player in active_players:
+                            player_rect = player.rect()
+                            for platform in moving_platforms:
+                                platform_rect = platform.rect()
+                                # 플레이어가 발판 위에 있는지 확인 (발판의 위쪽 가장자리에 플레이어가 서 있는 경우)
+                                if (player_rect.colliderect(platform_rect) and 
+                                    abs(player_rect.bottom - platform_rect.top) < 5 and 
+                                    player.on_ground):
+                                    # 발판이 이동한 만큼 플레이어도 함께 이동
+                                    movement_delta = platform.get_movement_delta()
+                                    player.y += movement_delta
+                    
+                    # 플레이어 간 충돌 처리를 위해 다른 플레이어 리스트 전달
+                    for i, player in enumerate(active_players):
+                        other_players = [p for j, p in enumerate(active_players) if j != i]
+                        player.update(keys, all_platforms, other_players)
+                    
+                    # 플레이어가 점프 직후에도 발판 위에 있다면 발판과 함께 이동 (가장자리에서 점프할 때)
+                    if current_stage == 4 or current_stage == 5:
+                        for player in active_players:
+                            player_rect = player.rect()
+                            for platform in moving_platforms:
+                                platform_rect = platform.rect()
+                                # 플레이어가 발판 위에 있고, 플레이어의 X 위치가 발판 범위 내에 있는 경우
+                                if (player_rect.colliderect(platform_rect) and 
+                                    player_rect.left < platform_rect.right and 
+                                    player_rect.right > platform_rect.left):
+                                    # 발판이 이동한 만큼 플레이어도 함께 이동 (점프 중에도)
+                                    movement_delta = platform.get_movement_delta()
+                                    if abs(movement_delta) > 0.1:  # 발판이 실제로 움직였을 때만
+                                        player.y += movement_delta
+                                        # 플레이어가 발판 위에 서 있는 경우에만 on_ground 유지
+                                        if abs(player_rect.bottom - platform_rect.top) < 5:
+                                            player.on_ground = True
+                
                 key_obj.update(active_players)
+                # 열쇠 획득 효과음
+                if key_obj.collected and not previous_key_collected:
+                    sound_manager.play_sfx('itempickup')
+                previous_key_collected = key_obj.collected
+                
                 door_obj.update(active_players)
+                # 문 열림 효과음
+                if door_obj.open and not previous_door_open:
+                    sound_manager.play_sfx('enter')
+                previous_door_open = door_obj.open
+                
+                # 3스테이지: 가시 충돌 체크 및 버튼 처리
+                if current_stage == 3 and spike is not None:
+                    # 가시 충돌 체크 (게임 오버)
+                    if spike.check_collision(active_players):
+                        # 게임 오버: 스테이지 리셋
+                        stage_result = create_stage_objects(current_stage, player_colors, selected_player_count)
+                        players, key_obj, door_obj, platforms, moving_platforms, spike, floor_button = stage_result
+                        active_players = players[:selected_player_count]
+                        door_obj.reset_interactions(active_players)
+                        door_spike = None
+                        floor_spikes = None
+                    
+                    # 버튼 업데이트
+                    if floor_button is not None:
+                        floor_button.update(active_players)
+                        # 버튼이 눌려있으면 바닥 생성 (뚫려있는 곳 매꾸기)
+                        if floor_button.pressed:
+                            gap_platform = pygame.Rect(400, 580, 160, 60)  # 400~560 사이
+                            # 이미 추가되어 있지 않은 경우에만 추가
+                            gap_exists = False
+                            for p in platforms:
+                                if p.x == 400 and p.y == 580 and p.w == 160 and p.h == 60:
+                                    gap_exists = True
+                                    break
+                            if not gap_exists:
+                                platforms.append(gap_platform)
+                        else:
+                            # 버튼이 눌리지 않았으면 gap_platform 제거
+                            platforms = [p for p in platforms if not (p.x == 400 and p.y == 580 and p.w == 160 and p.h == 60)]
+                
+                # 4스테이지: 하단 가시 충돌 체크
+                if current_stage == 4 and bottom_spike is not None:
+                    # 가시 충돌 체크 (게임 오버)
+                    if bottom_spike.check_collision(active_players):
+                        # 게임 오버: 스테이지 리셋
+                        stage_result = create_stage_objects(current_stage, player_colors, selected_player_count)
+                        players, key_obj, door_obj, platforms, moving_platforms, bottom_spike = stage_result
+                        active_players = players[:selected_player_count]
+                        door_obj.reset_interactions(active_players)
+                        door_spike = None
+                        floor_spikes = None
+                
+                # 5스테이지: 문 왼쪽 가시 충돌 체크
+                if current_stage == 5 and door_spike is not None:
+                    # 가시 충돌 체크 (게임 오버)
+                    if door_spike.check_collision(active_players):
+                        # 게임 오버: 스테이지 리셋
+                        stage_result = create_stage_objects(current_stage, player_colors, selected_player_count)
+                        if len(stage_result) == 6:
+                            players, key_obj, door_obj, platforms, moving_platforms, door_spike = stage_result
+                        active_players = players[:selected_player_count]
+                        door_obj.reset_interactions(active_players)
+                
+                # 6스테이지: 바닥 가시 충돌 체크
+                if current_stage == 6 and floor_spikes is not None:
+                    # 모든 가시에 대해 충돌 체크
+                    for spike in floor_spikes:
+                        if spike.check_collision(active_players):
+                            # 게임 오버: 스테이지 리셋
+                            stage_result = create_stage_objects(current_stage, player_colors, selected_player_count)
+                            if len(stage_result) == 6:
+                                players, key_obj, door_obj, platforms, moving_platforms, floor_spikes = stage_result
+                                spike = None
+                                floor_button = None
+                                bottom_spike = None
+                                door_spike = None
+                            active_players = players[:selected_player_count]
+                            door_obj.reset_interactions(active_players)
+                            break
                 
                 # 문과의 상호작용 체크 (지속적으로)
                 door_obj.check_interaction(active_players, keys)
@@ -556,10 +969,6 @@ def main():
                     state = STATE_CLEAR
                     # 다음 스테이지 준비를 위해 상호작용 상태 초기화
                     door_obj.reset_interactions(active_players)
-                    # 다음 스테이지 잠금 해제
-                    next_stage = current_stage + 1
-                    if next_stage <= MAX_STAGE and next_stage not in unlocked_stages:
-                        unlocked_stages.append(next_stage)
                 elif door_obj.open:
                     # 문이 열려있고 일부 플레이어만 상호작용한 경우 힌트 표시
                     door_rect = door_obj.rect()
@@ -567,9 +976,38 @@ def main():
                     if players_at_door:
                         interacted_count = sum(1 for p in active_players if p.interacted_with_door)
                         total_count = len(active_players)
-                        hint_text = f"Press keys to enter ({interacted_count}/{total_count})"
+                        hint_text = f"Press \"Down keys\" to enter ({interacted_count}/{total_count})"
                         hint = font.render(hint_text, True, PICO_TEXT_COLOR)
-                        screen.blit(hint, (door_obj.x - 80, door_obj.y - 40))
+                        screen.blit(hint, (door_obj.x - 320, door_obj.y - 60))
+            # 5스테이지: 움직이는 발판 렌더링
+            if current_stage == 5:
+                for platform in moving_platforms:
+                    platform.draw(screen)
+            # 움직이는 발판 렌더링
+            if current_stage == 4:
+                for platform in moving_platforms:
+                    platform.draw(screen)
+            
+            # 3스테이지: 가시와 버튼 렌더링
+            if current_stage == 3:
+                if spike is not None and (floor_button is None or not floor_button.pressed):
+                    spike.draw(screen)
+                if floor_button is not None:
+                    floor_button.draw(screen, font)
+            
+            # 4스테이지: 하단 가시 렌더링
+            if current_stage == 4 and bottom_spike is not None:
+                bottom_spike.draw(screen)
+            
+            # 5스테이지: 문 왼쪽 가시 렌더링
+            if current_stage == 5 and door_spike is not None:
+                door_spike.draw(screen)
+            
+            # 6스테이지: 바닥 가시 렌더링
+            if current_stage == 6 and floor_spikes is not None:
+                for spike in floor_spikes:
+                    spike.draw(screen)
+            
             # 플레이어 렌더링 (문 안으로 들어간 플레이어는 먼저 그리기)
             for player in active_players:
                 if player.entered_door:
@@ -579,6 +1017,27 @@ def main():
                     player.draw(screen)
             key_obj.draw(screen)
             door_obj.draw(screen, font)
+            
+            # 1스테이지: 조작키 설명 표시
+            if current_stage == 1:
+                controls_text = [
+                    "Player 1: Arrow Keys",
+                    "Player 2: WASD (W/A/S/D)",
+                    "Player 3: IJKL (I/J/K/L)"
+                ]
+                y_offset = 50
+                for i, text in enumerate(controls_text):
+                    if i < selected_player_count:
+                        control_label = font.render(text, True, PICO_TEXT_COLOR)
+                        screen.blit(control_label, (10, y_offset + i * 30))
+            
+            # 4스테이지, 6스테이지: 동기화 메시지 표시
+            if current_stage == 4 or current_stage == 6:
+                sync_message = "All players must input the same action to move!"
+                sync_label = font.render(sync_message, True, PICO_TEXT_COLOR)
+                # 화면 상단 중앙에 표시
+                message_x = (WIDTH - sync_label.get_width()) // 2
+                screen.blit(sync_label, (message_x, 50))
 
             stage_label = font.render(f"Stage {current_stage}", True, PICO_TEXT_COLOR)
             screen.blit(stage_label, (WIDTH - stage_label.get_width() - 12, 12))
@@ -589,11 +1048,12 @@ def main():
                 overlay = create_overlay(WIDTH, HEIGHT, 180)
                 screen.blit(overlay, (0, 0))
                 
-                # Pause 창 크기와 위치 (화면 중앙, 상대적 위치) - 더 넓게
+                # Pause 창 크기와 위치 (화면 중앙, 상대적 위치) - 더 넓게, 위아래 틈 추가
                 panel_width = 760
-                panel_height = 580
+                panel_height = 620  # 버튼 4개를 위해 높이 증가 (HEIGHT보다 작게 조정)
                 panel_x = (WIDTH - panel_width) // 2
-                panel_y = (HEIGHT - panel_height) // 2
+                margin = 30  # 천장/바닥 여백 (더 크게 설정)
+                panel_y = margin + (HEIGHT - panel_height - 2 * margin) // 2
                 
                 pause_panel = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
                 pygame.draw.rect(screen, (240, 240, 240), pause_panel)
@@ -647,7 +1107,7 @@ def main():
                 button_start_y = panel_y + label_y_offset + 150
                 
                 # 버튼 위치 업데이트
-                pause_buttons = ["resume", "back_to_menu", "quit_game"]
+                pause_buttons = ["resume", "reset_stage", "back_to_menu", "quit_game"]
                 for idx, btn_key in enumerate(pause_buttons):
                     btn = buttons[btn_key]
                     btn.rect.x = button_x
@@ -711,3 +1171,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
